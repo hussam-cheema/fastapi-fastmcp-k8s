@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+fastmcp>=3,<4
+pymongo

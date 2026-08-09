@@ -1,0 +1,581 @@
+---
+import "../styles/global.css";
+---
+
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+
+    <meta
+      name="viewport"
+      content="width=device-width"
+    />
+
+    <title>Reminders</title>
+  </head>
+
+  <body>
+    <main class="container">
+
+      <header>
+        <div>
+          <div class="badge">
+            FastAPI · FastMCP · MongoDB
+          </div>
+
+          <h1>My Reminders</h1>
+
+          <p>
+            Keep your day organized and never forget
+            what matters.
+          </p>
+        </div>
+
+        <div class="counter">
+          <span id="remaining-count">0</span>
+          <small>remaining</small>
+        </div>
+      </header>
+
+
+      <section class="new-reminder">
+
+        <form id="create-form">
+
+          <input
+            id="title"
+            placeholder="What do you need to remember?"
+            maxlength="120"
+            required
+          />
+
+          <textarea
+            id="description"
+            placeholder="Add some details..."
+          ></textarea>
+
+          <div class="form-row">
+
+            <input
+              id="due-at"
+              type="datetime-local"
+            />
+
+            <button type="submit">
+              + Add Reminder
+            </button>
+
+          </div>
+
+        </form>
+
+      </section>
+
+
+      <nav class="filters">
+
+        <button
+          class="filter active"
+          data-filter="all"
+        >
+          All
+        </button>
+
+        <button
+          class="filter"
+          data-filter="pending"
+        >
+          Pending
+        </button>
+
+        <button
+          class="filter"
+          data-filter="completed"
+        >
+          Completed
+        </button>
+
+      </nav>
+
+
+      <section id="reminders" class="reminders">
+      </section>
+
+
+      <div id="empty-state" class="empty hidden">
+        <div class="empty-icon">✓</div>
+
+        <h2>You're all caught up.</h2>
+
+        <p>Create a reminder above.</p>
+      </div>
+
+    </main>
+
+
+    <dialog id="edit-dialog">
+
+      <form id="edit-form">
+
+        <h2>Edit reminder</h2>
+
+        <input
+          id="edit-title"
+          required
+        />
+
+        <textarea
+          id="edit-description"
+        ></textarea>
+
+        <input
+          id="edit-due"
+          type="datetime-local"
+        />
+
+        <div class="dialog-actions">
+
+          <button
+            type="button"
+            id="cancel-edit"
+            class="secondary"
+          >
+            Cancel
+          </button>
+
+          <button type="submit">
+            Save Changes
+          </button>
+
+        </div>
+
+      </form>
+
+    </dialog>
+
+
+    <script>
+
+      let reminders = [];
+      let filter = "all";
+      let editingId = null;
+
+
+      const container =
+        document.querySelector("#reminders");
+
+      const emptyState =
+        document.querySelector("#empty-state");
+
+      const remaining =
+        document.querySelector("#remaining-count");
+
+
+      function escapeHtml(value = "") {
+        const div = document.createElement("div");
+        div.textContent = value;
+        return div.innerHTML;
+      }
+
+
+      function formatDate(value) {
+
+        if (!value)
+          return "No due date";
+
+        return new Date(value)
+          .toLocaleString();
+      }
+
+
+      function toLocalInput(value) {
+
+        if (!value)
+          return "";
+
+        const date = new Date(value);
+
+        const offset =
+          date.getTimezoneOffset() * 60000;
+
+        return new Date(
+          date.getTime() - offset
+        )
+          .toISOString()
+          .slice(0, 16);
+      }
+
+
+      async function loadReminders() {
+
+        const response =
+          await fetch("/api/reminders");
+
+        reminders = await response.json();
+
+        render();
+      }
+
+
+      function render() {
+
+        let displayed = reminders;
+
+
+        if (filter === "pending") {
+          displayed =
+            reminders.filter(r => !r.completed);
+        }
+
+
+        if (filter === "completed") {
+          displayed =
+            reminders.filter(r => r.completed);
+        }
+
+
+        remaining.textContent =
+          reminders.filter(r => !r.completed)
+            .length;
+
+
+        emptyState.classList.toggle(
+          "hidden",
+          displayed.length !== 0
+        );
+
+
+        container.innerHTML =
+          displayed.map(reminder => `
+
+            <article
+              class="reminder-card
+              ${reminder.completed
+                ? "completed"
+                : ""}"
+            >
+
+              <button
+                class="checkbox"
+                data-toggle="${reminder.id}"
+              >
+                ${reminder.completed
+                  ? "✓"
+                  : ""}
+              </button>
+
+
+              <div class="content">
+
+                <h3>
+                  ${escapeHtml(reminder.title)}
+                </h3>
+
+                ${
+                  reminder.description
+                    ? `
+                      <p>
+                        ${escapeHtml(
+                          reminder.description
+                        )}
+                      </p>
+                    `
+                    : ""
+                }
+
+                <div class="due">
+                  ◷ ${formatDate(
+                    reminder.due_at
+                  )}
+                </div>
+
+              </div>
+
+
+              <div class="actions">
+
+                <button
+                  data-edit="${reminder.id}"
+                  class="icon-button"
+                >
+                  Edit
+                </button>
+
+                <button
+                  data-delete="${reminder.id}"
+                  class="icon-button danger"
+                >
+                  Delete
+                </button>
+
+              </div>
+
+            </article>
+
+          `).join("");
+      }
+
+
+      document
+        .querySelector("#create-form")
+        .addEventListener(
+          "submit",
+          async event => {
+
+            event.preventDefault();
+
+
+            const title =
+              document.querySelector("#title");
+
+            const description =
+              document.querySelector(
+                "#description"
+              );
+
+            const due =
+              document.querySelector("#due-at");
+
+
+            await fetch(
+              "/api/reminders",
+              {
+                method: "POST",
+
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+
+                body: JSON.stringify({
+                  title: title.value,
+
+                  description:
+                    description.value,
+
+                  due_at:
+                    due.value
+                      ? new Date(
+                          due.value
+                        ).toISOString()
+                      : null,
+                }),
+              }
+            );
+
+
+            event.target.reset();
+
+            await loadReminders();
+          }
+        );
+
+
+      document.addEventListener(
+        "click",
+        async event => {
+
+          const toggleId =
+            event.target.dataset.toggle;
+
+
+          if (toggleId) {
+
+            const reminder =
+              reminders.find(
+                r => r.id === toggleId
+              );
+
+            await fetch(
+              `/api/reminders/${toggleId}`,
+              {
+                method: "PUT",
+
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+
+                body: JSON.stringify({
+                  completed:
+                    !reminder.completed,
+                }),
+              }
+            );
+
+            await loadReminders();
+
+            return;
+          }
+
+
+          const deleteId =
+            event.target.dataset.delete;
+
+
+          if (deleteId) {
+
+            if (!confirm(
+              "Delete this reminder?"
+            ))
+              return;
+
+
+            await fetch(
+              `/api/reminders/${deleteId}`,
+              {
+                method: "DELETE",
+              }
+            );
+
+            await loadReminders();
+
+            return;
+          }
+
+
+          const editId =
+            event.target.dataset.edit;
+
+
+          if (editId) {
+
+            const reminder =
+              reminders.find(
+                r => r.id === editId
+              );
+
+
+            editingId = editId;
+
+
+            document.querySelector(
+              "#edit-title"
+            ).value =
+              reminder.title;
+
+
+            document.querySelector(
+              "#edit-description"
+            ).value =
+              reminder.description;
+
+
+            document.querySelector(
+              "#edit-due"
+            ).value =
+              toLocalInput(
+                reminder.due_at
+              );
+
+
+            document.querySelector(
+              "#edit-dialog"
+            ).showModal();
+          }
+        }
+      );
+
+
+      document
+        .querySelector("#edit-form")
+        .addEventListener(
+          "submit",
+          async event => {
+
+            event.preventDefault();
+
+
+            const due =
+              document.querySelector(
+                "#edit-due"
+              ).value;
+
+
+            await fetch(
+              `/api/reminders/${editingId}`,
+              {
+                method: "PUT",
+
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+
+                body: JSON.stringify({
+
+                  title:
+                    document.querySelector(
+                      "#edit-title"
+                    ).value,
+
+                  description:
+                    document.querySelector(
+                      "#edit-description"
+                    ).value,
+
+                  due_at:
+                    due
+                      ? new Date(due)
+                          .toISOString()
+                      : null,
+                }),
+              }
+            );
+
+
+            document.querySelector(
+              "#edit-dialog"
+            ).close();
+
+
+            await loadReminders();
+          }
+        );
+
+
+      document
+        .querySelector("#cancel-edit")
+        .addEventListener(
+          "click",
+          () => {
+            document
+              .querySelector("#edit-dialog")
+              .close();
+          }
+        );
+
+
+      document.querySelectorAll(
+        ".filter"
+      ).forEach(button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            filter =
+              button.dataset.filter;
+
+
+            document.querySelectorAll(
+              ".filter"
+            ).forEach(b =>
+              b.classList.remove("active")
+            );
+
+
+            button.classList.add("active");
+
+            render();
+          }
+        );
+      });
+
+
+      loadReminders();
+
+    </script>
+
+  </body>
+</html>
