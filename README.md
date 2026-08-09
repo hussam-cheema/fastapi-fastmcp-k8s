@@ -2,7 +2,7 @@
 
 A small **Reminders App** built to practice Kubernetes locally with Minikube.
 
-![Uploading image.png…]()
+<img width="930" height="784" alt="image" src="https://github.com/user-attachments/assets/2fcea524-53d6-46c4-a9cc-fdc337e7faf6" />
 
 
 ## Architecture
